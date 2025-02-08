@@ -1,3 +1,4 @@
 /__pycache__/
 /.venv/
 /oai_cli.egg-info/
+conversation_history.json

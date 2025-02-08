@@ -10,6 +10,7 @@ setup(
     entry_points={
         "console_scripts": [
             "oai = oai:main",
+            "oai-clear = oai:clear_conversation",
         ],
     },
 )
