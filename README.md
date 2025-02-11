@@ -14,13 +14,25 @@ pip install -e .
 pip install -r requirements.txt
 ```
 
+#### Set Conversation
+
+```bash
+oai-set-chat ca_gold_rush
+```
+
+#### Set Model
+
+```bash
+oai-set-model o1-mini
+```
+
 #### Usage
 
 ```bash
-oai "What is the population of Oceanside, CA?"
+oai "list five little known facts about the California gold rush. Be concise but cite your sources."
 ```
 
-#### Clear Memory / Conversation History
+#### Clear Memory / Conversation History (Current Conversation)
 
 ```bash
 oai-clear
