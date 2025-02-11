@@ -8,6 +8,7 @@ setup(
         "openai",
         "rich",
         "tiktoken",
+        "pyperclip",
     ],
     entry_points={
         "console_scripts": [
@@ -15,6 +16,12 @@ setup(
             "oai-clear = oai:clear_conversation",
             "oai-set-model = oai:set_model",
             "oai-set-chat = oai:set_conversation",
+            "oai-history = oai:print_conversation_history",
+            "oaic = oai:copy_block_to_clipboard",
+            "oai-add = oai:add_context",
+            "oai-rm = oai:rm_context",
+            "oai-clear-context = oai:clear_context",
+            "oai-cl = oai:copy_last_response",
         ],
     },
 )

@@ -9,6 +9,9 @@ from rich.live import Live
 from rich.panel import Panel
 import json
 import tiktoken
+import re
+import pyperclip  # Cross-platform clipboard library
+
 
 CONFIG_FILE = "config.json"
 
@@ -42,6 +45,9 @@ def change_conversation(conversation):
         conversation += ".json"
     # if the conversation doesn't exist, create it
     if not os.path.exists(conversation):
+        # if /conversations/ doesn't exist, create it
+        if not os.path.exists("./conversations"):
+            os.makedirs("./conversations")
         with open(conversation, "w") as f:
             json.dump([], f)
     config["conversation"] = conversation
@@ -61,6 +67,42 @@ def count_cumulative_tokens(conversation, model):
     for message in conversation_history:
         cumulative_tokens += count_tokens(message["content"], model)
     return cumulative_tokens
+
+def extract_code_blocks(message):
+    # find all code blocks in the message
+    code_block_pattern = re.compile(r'```(\w+)?\n(.*?)```', re.DOTALL)
+    code_blocks = code_block_pattern.findall(message)
+
+    numbered_blocks = []
+    for idx, (lang, code) in enumerate(code_blocks, start=1):
+        numbered_blocks.append({
+            'language': lang if lang else 'plaintext',
+            'code': code.strip(),
+            'number': idx,
+        })
+    return numbered_blocks
+
+def copy_block_to_clipboard():
+    parser = argparse.ArgumentParser(description="Set the number of the block to copy to clipboard.")
+    parser.add_argument("block_number", help="Set the block number to copy to clipboard.")
+    args = parser.parse_args()
+    block_number = int(args.block_number)
+    config = load_config()
+    conversation = config["conversation"]
+    with open(conversation, "r") as f:
+        conversation_history = json.load(f)
+    entry = conversation_history[-1]
+    message = entry["content"]
+    blocks = extract_code_blocks(message)
+    if block_number > len(blocks):
+        console.print(f"Block number {block_number} is out of range.", style="bold red")
+        return
+    block = blocks[block_number - 1]
+    pyperclip.copy(block["code"])
+    console.print(f"Copied {block['language']} block {block['number']} to clipboard.", style="bold green")
+    # print the block in a panel
+    panel = Panel(block["code"], title=fr'\[{block["language"]}] block copied', padding=(2, 4), border_style="green")
+    console.print(panel)
 
 def main():
     # Use the API key from the environment.
@@ -82,11 +124,38 @@ def main():
     parser.add_argument("prompt", nargs="+", help="The prompt to send to the model")
     args = parser.parse_args()
     prompt_text = " ".join(args.prompt)
+
+    # -- NEW CODE TO INCLUDE FILE CONTEXT --
+    context_files = config.get("context", [])
+    context_text = ""
+    prompt_display_context = []
+    for file_path in context_files:
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, "r") as f:
+                    file_content = f.read()
+                    context_text += f"\n\n[Context from {file_path}]\n{file_content}"
+                    prompt_display_context.append(fr"\[including context from {file_path}]")
+            except Exception as e:
+                console.print(f"Failed to read context file {file_path}: {e}", style="bold red")
+        else:
+            console.print(f"Context file {file_path} does not exist. Skipping...", style="bold yellow")
+    if context_text:
+        display_text = prompt_text + "\n\n" + "\n".join(prompt_display_context)
+        prompt_text = context_text + "\n\n" + prompt_text
+    else:
+        display_text = prompt_text
+        
+    # -- END NEW CODE --
+
     if os.path.exists(conversation):
         with open(conversation, "r") as f:
             conversation_history = json.load(f)
     else:
         conversation_history = []
+        # create file if it doesn't exist
+        with open(conversation, "w") as f:
+            json.dump([], f)
 
     conversation_history.append({"role": "user", "content": prompt_text})
     prompt_token_count = count_tokens(prompt_text, model)
@@ -99,30 +168,24 @@ def main():
             messages=conversation_history,
             stream=True
         )
-
-        # fr'[bold]\[{model}] Prompt:[/bold]' + 
-        panel = Panel(f'>> {prompt_text} \n\n[bold]Token count:[/bold] {prompt_token_count} \n[bold]Total tokens in memory:[/bold] {token_count}', title=fr'\[{model}] \[{conversation_name}] prompt', padding=(1, 2), border_style="yellow")
+        panel = Panel(f'>> {display_text} \n\n[bold]Token count:[/bold] {prompt_token_count} \n[bold]Total tokens in memory:[/bold] {token_count}', 
+                      title=fr'\[{model}] \[{conversation_name}] prompt', padding=(1, 2), border_style="yellow")
         console.print(panel)
 
         # Accumulate the text as it streams in.
         accumulated_text = ""
-        # Use Live to update a single markdown block in the terminal.
         with Live(Markdown(accumulated_text, code_theme="github-dark", inline_code_theme="github-dark"), console=console, refresh_per_second=10) as live:
             for chunk in response:
-                # Directly access the content of the streamed chunk.
                 try:
                     message = chunk.choices[0].delta.content
                 except Exception:
                     message = ""
                 if message:
                     accumulated_text += message
-                    # Compute live token count for the accumulated response.
                     tokens_so_far = count_tokens(accumulated_text, model)
-                    # Create a display text that includes the live token counter at the bottom.
-                    response_token_count = f"\n**Response token count:** {tokens_so_far}"
-                    total_tokens = f"\n\n**Total tokens in memory:** {tokens_so_far + token_count}"
+                    response_token_count = f"\n**Response token count:** {tokens_so_far} \n"
+                    total_tokens = f"\n**Total tokens in memory:** {tokens_so_far + token_count}"
                     display_text = accumulated_text + f"\n\n---" + response_token_count + total_tokens
-                    # Update the live display with the new markdown content and token counter.
                     panel = Panel(Markdown(display_text, code_theme="github-dark", inline_code_theme="github-dark"),
                                   title=fr'\[{model}] \[{conversation_name}] response',
                                   padding=(2, 4), border_style="green")
@@ -133,10 +196,49 @@ def main():
         console.print(panel)
         sys.exit(1)
 
-    # Save the conversation history to a JSON file.
     with open(conversation, "w") as f:
         json.dump(conversation_history, f)
 
+# Add files to the context array.
+def add_context():
+    parser = argparse.ArgumentParser(description="Add one or more files to the context array.")
+    parser.add_argument("files", nargs="+", help="File paths to add to context.")
+    args = parser.parse_args()
+
+    config = load_config()
+    context_files = config.get("context", [])
+    for file_path in args.files:
+        if file_path in context_files:
+            console.print(f"File {file_path} is already in context.", style="bold yellow")
+        else:
+            context_files.append(file_path)
+            console.print(f"Added {file_path} to context.", style="bold green")
+    config["context"] = context_files
+    save_config(config)
+
+# Remove a file from the context array.
+def rm_context():
+    parser = argparse.ArgumentParser(description="Remove a file from the context array.")
+    parser.add_argument("file", help="File path to remove from context.")
+    args = parser.parse_args()
+
+    config = load_config()
+    context_files = config.get("context", [])
+    if args.file not in context_files:
+        console.print(f"File {args.file} is not in context.", style="bold yellow")
+    else:
+        context_files.remove(args.file)
+        config["context"] = context_files
+        save_config(config)
+        console.print(f"Removed {args.file} from context.", style="bold green")
+
+# Clear the entire context array.
+def clear_context():
+    config = load_config()
+    config["context"] = []
+    save_config(config)
+    console.print("Cleared context. Context array reset.", style="bold green")
+    
 if __name__ == "__main__":
     main()
 
@@ -160,3 +262,36 @@ def set_conversation():
     parser.add_argument("conversation", help="The conversation to use.")
     args = parser.parse_args()
     change_conversation(args.conversation)
+
+# print conversation history in panels like main function
+def print_conversation_history():
+    config = load_config()
+    conversation = config["conversation"]
+    if os.path.exists(conversation):
+        with open(conversation, "r") as f:
+            conversation_history = json.load(f)
+    else:
+        conversation_history = []
+    for message in conversation_history:
+        if message["role"] == "user":
+            panel = Panel(f'>> {message["content"]}', title=fr'\[{message["role"]}]', padding=(1, 2), border_style="yellow")
+        else:
+            panel = Panel(Markdown(message["content"], code_theme="github-dark", inline_code_theme="github-dark"), 
+                         title=fr'\[{message["role"]}]', padding=(2, 4), border_style="green")
+        console.print(panel)
+
+def copy_last_response():
+    config = load_config()
+    conversation = config["conversation"]
+    if os.path.exists(conversation):
+        with open(conversation, "r") as f:
+            conversation_history = json.load(f)
+        # Iterate from the end to find the last assistant message
+        for message in reversed(conversation_history):
+            if message["role"] == "assistant":
+                pyperclip.copy(message["content"])
+                console.print("Last assistant response copied to clipboard.", style="bold green")
+                return
+        console.print("No assistant response found in the conversation.", style="bold yellow")
+    else:
+        console.print("Conversation file does not exist.", style="bold red")
