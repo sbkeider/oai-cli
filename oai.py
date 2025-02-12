@@ -114,8 +114,14 @@ def main():
 
     config = load_config()
     model = config["model"]
+    
     encoding = tiktoken.encoding_for_model(model)
     conversation = config["conversation"]
+    # if conversation doesn't exist, create it
+    if not os.path.exists(conversation):
+        with open(conversation, "w") as f:
+            json.dump([], f)
+            
     conversation_name = conversation.split("/")[-1].split(".")[0]
     # Parse command-line arguments; allow multi-word prompts.
     parser = argparse.ArgumentParser(
@@ -295,3 +301,12 @@ def copy_last_response():
         console.print("No assistant response found in the conversation.", style="bold yellow")
     else:
         console.print("Conversation file does not exist.", style="bold red")
+
+def clear_all_chats():
+    config = load_config()
+    config["conversation"] = "./conversations/default.json"
+    save_config(config)
+    # remove all files in ./conversations/
+    for file in os.listdir("./conversations/"):
+        os.remove(os.path.join("./conversations/", file))
+    console.print("All chats cleared.", style="bold green")

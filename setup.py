@@ -22,6 +22,7 @@ setup(
             "oai-rm = oai:rm_context",
             "oai-clear-context = oai:clear_context",
             "oai-cl = oai:copy_last_response",
+            "oai-clear-all = oai:clear_all_chats",
         ],
     },
 )
