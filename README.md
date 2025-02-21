@@ -64,6 +64,12 @@ oai-history
 oai-clear-all
 ```
 
+#### Copy Specific Block of Code to Clipboard (block number starts at 1)
+
+```bash
+oai-c <block_number>
+```
+
 #### Copy Last Assistant Response to Clipboard
 
 ```bash
