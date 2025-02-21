@@ -1,1 +1,1 @@
-{"model": "gpt-4o-mini", "conversation": "./conversations/default.json", "context": []}
+{"model": "gpt-4o", "conversation": "./conversations/sqlExample.json", "context": ["./sqlExample.sql"]}

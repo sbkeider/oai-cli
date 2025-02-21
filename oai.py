@@ -310,3 +310,11 @@ def clear_all_chats():
     for file in os.listdir("./conversations/"):
         os.remove(os.path.join("./conversations/", file))
     console.print("All chats cleared.", style="bold green")
+
+def which_chat():
+    config = load_config()
+    conversation = config["conversation"]
+    if os.path.exists(conversation):
+        console.print(f"Currently using chat: {conversation}", style="bold green")
+    else:
+        console.print("No chat selected.", style="bold yellow")
